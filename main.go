@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,22 +32,15 @@ func producer(scanner *bufio.Scanner) <-chan string {
 	return dataStream
 }
 
-func main() {
-	ts := time.Now()
-
-	// chunkSize := flag.Int("chunkSize", 10, "chunk size")
-	flag.Parse()
-
-	file, err := os.Open("input/measurements_medium.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	cities := make(map[string]City)
-
-	scanner := bufio.NewScanner(file)
-	dataStream := producer(scanner)
+func consumer(
+	cities map[string]City,
+	dataStream <-chan string,
+	wg *sync.WaitGroup,
+	mu *sync.Mutex,
+) {
+	defer wg.Done()
+	mu.Lock()
+	defer mu.Unlock()
 
 	for line := range dataStream {
 		cityName, num := parseLine(line)
@@ -67,7 +61,7 @@ func main() {
 			cities[cityName] = newCity
 
 		} else {
-			newCity := City{
+			newCity := &City{
 				Name:  cityName,
 				Min:   num,
 				Max:   num,
@@ -75,9 +69,37 @@ func main() {
 				Count: 0,
 			}
 
-			cities[cityName] = newCity
+			cities[cityName] = *newCity
 		}
 	}
+}
+
+func main() {
+	ts := time.Now()
+
+	// chunkSize := flag.Int("chunkSize", 10, "chunk size")
+	flag.Parse()
+
+	file, err := os.Open("input/measurements_medium.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	cities := make(map[string]City)
+
+	scanner := bufio.NewScanner(file)
+	dataStream := producer(scanner)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go consumer(cities, dataStream, &wg, &mu)
+	}
+
+	wg.Wait()
 
 	fmt.Println(time.Since(ts))
 }
