@@ -4,78 +4,91 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
-type Temperature struct {
-	Min               int
-	Max               int
-	Avg               int
-	NumOfTemperatures int
+type City struct {
+	Name  string
+	Min   int
+	Max   int
+	Avg   float32
+	Count int
+}
+
+func producer(scanner *bufio.Scanner) <-chan string {
+	dataStream := make(chan string)
+	go func() {
+		defer close(dataStream)
+		for scanner.Scan() {
+			dataStream <- scanner.Text()
+		}
+	}()
+
+	return dataStream
 }
 
 func main() {
-	inputFile := flag.String("input_file", "", "Log file name.")
-	flag.Parse()
-
 	ts := time.Now()
 
-	file, err := os.Open(*inputFile)
+	// chunkSize := flag.Int("chunkSize", 10, "chunk size")
+	flag.Parse()
+
+	file, err := os.Open("input/measurements_medium.txt")
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		log.Fatal(err)
 	}
 	defer file.Close()
 
+	cities := make(map[string]City)
+
 	scanner := bufio.NewScanner(file)
+	dataStream := producer(scanner)
 
-	temperatureMap := make(map[string]Temperature)
+	for line := range dataStream {
+		cityName, num := parseLine(line)
 
-	var count = 0
-
-	for scanner.Scan() {
-		count += 1
-
-		parts := strings.Split(scanner.Text(), ";")
-		city := parts[0]
-		temperature, _ := strconv.Atoi(strings.Replace(parts[1], ".", "", 1))
-
-		if temp, ok := temperatureMap[city]; ok {
-			t := temperatureMap[city]
-
-			t.NumOfTemperatures += 1
-			t.Avg = (t.Avg*t.NumOfTemperatures + temperature) / (t.NumOfTemperatures + 1)
-
-			if temp.Min > temperature {
-				t.Min = temperature
+		if city, ok := cities[cityName]; ok {
+			newCity := city
+			if city.Max < num {
+				newCity.Max = num
 			}
-			if temp.Max < temperature {
-				t.Max = temperature
+			if city.Min > num {
+				newCity.Min = num
 			}
 
-			temperatureMap[city] = t
+			newCity.Avg = (city.Avg*float32(city.Count) + float32(num)) / (float32(city.Count) + 1)
+
+			newCity.Count += 1
+
+			cities[cityName] = newCity
 
 		} else {
-			newTemp := Temperature{
-				Min:               temperature,
-				Max:               temperature,
-				Avg:               temperature,
-				NumOfTemperatures: 1,
+			newCity := City{
+				Name:  cityName,
+				Min:   num,
+				Max:   num,
+				Avg:   float32(num),
+				Count: 0,
 			}
-			temperatureMap[city] = newTemp
+
+			cities[cityName] = newCity
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		fmt.Println("Error:", err)
-	}
+	fmt.Println(time.Since(ts))
+}
 
-	// for city, temp := range temperatureMap {
-	// 	fmt.Printf("key[%s] value[%+v]\n", city, temp)
-	// }
+func parseLine(line string) (string, int) {
+	lineSplit := strings.Split(line, ";")
 
-	fmt.Println("Exec time:", time.Since(ts).String(), count)
+	city := lineSplit[0]
+	temp := lineSplit[1]
+	tempStr := strings.Replace(temp, ".", "", -1)
+	num, _ := strconv.Atoi(tempStr)
+
+	return city, num
 }
