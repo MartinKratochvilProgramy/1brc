@@ -20,23 +20,12 @@ type City struct {
 	Count int
 }
 
-func producer(batchSize int, scanner *bufio.Scanner) <-chan []string {
-	dataStream := make(chan []string)
+func producer(scanner *bufio.Scanner) <-chan string {
+	dataStream := make(chan string)
 	go func() {
 		defer close(dataStream)
-
-		count := 0
-		lines := []string{}
-
 		for scanner.Scan() {
-			count++
-			lines = append(lines, scanner.Text())
-
-			if count%batchSize == 0 {
-				count = 0
-				dataStream <- lines
-				lines = []string{}
-			}
+			dataStream <- scanner.Text()
 		}
 	}()
 
@@ -45,7 +34,7 @@ func producer(batchSize int, scanner *bufio.Scanner) <-chan []string {
 
 func consumer(
 	cities map[string]City,
-	dataStream <-chan []string,
+	dataStream <-chan string,
 	wg *sync.WaitGroup,
 	mu *sync.Mutex,
 ) {
@@ -53,36 +42,34 @@ func consumer(
 	mu.Lock()
 	defer mu.Unlock()
 
-	for batch := range dataStream {
-		for _, line := range batch {
-			cityName, num := parseLine(line)
+	for line := range dataStream {
+		cityName, num := parseLine(line)
 
-			if city, ok := cities[cityName]; ok {
-				newCity := city
-				if city.Max < num {
-					newCity.Max = num
-				}
-				if city.Min > num {
-					newCity.Min = num
-				}
-
-				newCity.Avg = (city.Avg*float32(city.Count) + float32(num)) / (float32(city.Count) + 1)
-
-				newCity.Count += 1
-
-				cities[cityName] = newCity
-
-			} else {
-				newCity := &City{
-					Name:  cityName,
-					Min:   num,
-					Max:   num,
-					Avg:   float32(num),
-					Count: 0,
-				}
-
-				cities[cityName] = *newCity
+		if city, ok := cities[cityName]; ok {
+			newCity := city
+			if city.Max < num {
+				newCity.Max = num
 			}
+			if city.Min > num {
+				newCity.Min = num
+			}
+
+			newCity.Avg = (city.Avg*float32(city.Count) + float32(num)) / (float32(city.Count) + 1)
+
+			newCity.Count += 1
+
+			cities[cityName] = newCity
+
+		} else {
+			newCity := &City{
+				Name:  cityName,
+				Min:   num,
+				Max:   num,
+				Avg:   float32(num),
+				Count: 0,
+			}
+
+			cities[cityName] = *newCity
 		}
 	}
 }
@@ -102,8 +89,7 @@ func main() {
 	cities := make(map[string]City)
 
 	scanner := bufio.NewScanner(file)
-	BATCH_SIZE := 10000
-	dataStream := producer(BATCH_SIZE, scanner)
+	dataStream := producer(scanner)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
