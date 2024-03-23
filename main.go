@@ -20,7 +20,8 @@ type City struct {
 	Count int
 }
 
-func producer(batchSize int, scanner *bufio.Scanner) <-chan []string {
+func producer(batchSize int, file *os.File) <-chan []string {
+	scanner := bufio.NewScanner(file)
 	dataStream := make(chan []string)
 	go func() {
 		defer close(dataStream)
@@ -44,14 +45,12 @@ func producer(batchSize int, scanner *bufio.Scanner) <-chan []string {
 }
 
 func consumer(
-	cities map[string]City,
 	dataStream <-chan []string,
+	output chan map[string]*City,
 	wg *sync.WaitGroup,
-	mu *sync.Mutex,
 ) {
 	defer wg.Done()
-	mu.Lock()
-	defer mu.Unlock()
+	cities := make(map[string]*City)
 
 	for batch := range dataStream {
 		for _, line := range batch {
@@ -78,13 +77,14 @@ func consumer(
 					Min:   num,
 					Max:   num,
 					Avg:   float32(num),
-					Count: 0,
+					Count: 1,
 				}
 
-				cities[cityName] = *newCity
+				cities[cityName] = newCity
 			}
 		}
 	}
+	output <- cities
 }
 
 func main() {
@@ -93,27 +93,54 @@ func main() {
 	// chunkSize := flag.Int("chunkSize", 10, "chunk size")
 	flag.Parse()
 
-	file, err := os.Open("input/measurements_medium.txt")
+	file, err := os.Open("input/measurements_small.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
 
-	cities := make(map[string]City)
+	BATCH_SIZE := 10
+	WORKERS := 2
+	dataStream := producer(BATCH_SIZE, file)
 
-	scanner := bufio.NewScanner(file)
-	BATCH_SIZE := 10000
-	dataStream := producer(BATCH_SIZE, scanner)
+	channels := make([]chan []string, WORKERS)
+	aggregateChannels := make([]chan map[string]*City, WORKERS)
 
 	var wg sync.WaitGroup
-	var mu sync.Mutex
+	wg.Add(WORKERS)
 
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go consumer(cities, dataStream, &wg, &mu)
+	for i := 0; i < WORKERS; i++ {
+		input := make(chan []string)
+		output := make(chan map[string]*City, 1)
+
+		go consumer(input, output, &wg)
+
+		channels[i] = input
+		aggregateChannels[i] = output
 	}
 
+	var index int
+	for batch := range dataStream {
+		channels[index] <- batch
+
+		index++
+		if index >= WORKERS {
+			index = 0
+		}
+	}
+
+	for i := 0; i < WORKERS; i++ {
+		close(channels[i])
+	}
 	wg.Wait()
+	for i := 0; i < WORKERS; i++ {
+		close(aggregateChannels[i])
+	}
+	for i := 0; i < WORKERS; i++ {
+		for name, c := range <-aggregateChannels[i] {
+			fmt.Println(name, c)
+		}
+	}
 
 	fmt.Println(time.Since(ts))
 }
