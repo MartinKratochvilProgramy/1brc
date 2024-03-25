@@ -1,0 +1,50 @@
+Villahermosa;35.6
+Tauranga;28.7
+Tauranga;19.8
+Monterrey;23.8
+Antsiranana;32.6
+Ljubljana;26.0
+Tripoli;32.5
+Asmara;31.2
+Iqaluit;38.2
+Charlotte;7.9
+Pontianak;39.4
+Mexico City;50.5
+Dushanbe;9.7
+Toronto;22.4
+Nairobi;18.1
+Tel Aviv;22.4
+Douala;31.3
+Lagos;24.7
+Bergen;22.2
+Anadyr;20.1
+Busan;4.3
+Vancouver;47.9
+Lodwar;33.3
+Frankfurt;20.2
+Erzurum;23.6
+Ségou;24.3
+Vientiane;29.5
+Bordeaux;20.8
+El Paso;28.3
+Kampala;17.9
+Odesa;17.3
+Yellowknife;23.2
+Nuuk;19.4
+Lhasa;28.2
+Zanzibar City;21.6
+Toronto;14.3
+Guangzhou;24.9
+Cape Town;19.9
+Vancouver;21.3
+San Salvador;33.7
+Barcelona;31.7
+Tallinn;31.0
+Dolisie;21.3
+Andorra la Vella;22.8
+Andorra la Vella;14.1
+San Juan;16.1
+Baku;9.6
+Barcelona;27.6
+Harbin;43.7
+Las Palmas de Gran Canaria;18.0

@@ -1,4 +1,5 @@
 .vscode
-input/*
+input/measurements.txt
+input/input.txt
 *.exe
 go.mod
