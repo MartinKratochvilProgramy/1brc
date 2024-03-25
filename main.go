@@ -20,7 +20,12 @@ type City struct {
 	Count int
 }
 
-func producer(file *os.File, chunkSize int) <-chan []byte {
+func producer(filePath string, chunkSize int) <-chan []byte {
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	dataStream := make(chan []byte)
 
 	reader := bufio.NewReader(file)
@@ -29,6 +34,8 @@ func producer(file *os.File, chunkSize int) <-chan []byte {
 
 	go func() {
 		defer close(dataStream)
+		defer file.Close()
+
 		for {
 			bytesRead, err := reader.Read(buffer)
 			if err != nil && err != io.EOF {
@@ -59,7 +66,6 @@ func producer(file *os.File, chunkSize int) <-chan []byte {
 
 		// Process or save the remainder if any
 		if len(remainder) > 0 {
-			// fmt.Println(string(remainder))
 			dataStream <- remainder
 		}
 	}()
@@ -151,16 +157,10 @@ func aggregate(aggregateChannels []<-chan map[string]*City) {
 func main() {
 	ts := time.Now()
 
-	file, err := os.Open("input/measurements_medium.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
 	CHUNK_SIZE := 500000
 	WORKERS := 200
-	dataStream := producer(file, CHUNK_SIZE)
 
+	dataStream := producer("input/measurements_medium.txt", CHUNK_SIZE)
 	inputChannels := make([]chan []byte, WORKERS)
 	aggregateChannels := make([]<-chan map[string]*City, WORKERS)
 
@@ -168,6 +168,8 @@ func main() {
 	wg.Add(WORKERS)
 
 	for i := 0; i < WORKERS; i++ {
+		// create n workers, each worker reads data from it's inputStream, calclulates City
+		// then feeds the citiesMap into outputStream, which will be then collected by aggregate func
 		inputStream := make(chan []byte)
 		outputStream := consumer(inputStream, &wg)
 
