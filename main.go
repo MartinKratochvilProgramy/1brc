@@ -69,50 +69,54 @@ func producer(file *os.File, chunkSize int) <-chan []byte {
 
 func consumer(
 	dataStream <-chan []byte,
-	output chan map[string]*City,
 	wg *sync.WaitGroup,
-) {
-	defer wg.Done()
+) <-chan map[string]*City {
+
 	cities := make(map[string]*City)
+	outputStream := make(chan map[string]*City, 1)
 
-	for batch := range dataStream {
-		for _, line := range strings.Split(string(batch), "\n") {
-			cityName, num := parseLine(line)
+	go func() {
+		defer wg.Done()
+		defer close(outputStream)
 
-			if city, ok := cities[cityName]; ok {
-				newCity := city
-				if city.Max < num {
-					newCity.Max = num
+		for batch := range dataStream {
+			for _, line := range strings.Split(string(batch), "\n") {
+				cityName, num := parseLine(line)
+
+				if city, ok := cities[cityName]; ok {
+					newCity := city
+					if city.Max < num {
+						newCity.Max = num
+					}
+					if city.Min > num {
+						newCity.Min = num
+					}
+
+					newCity.Avg = (city.Avg*float32(city.Count) + float32(num)) / (float32(city.Count) + 1)
+
+					newCity.Count += 1
+
+					cities[cityName] = newCity
+
+				} else {
+					newCity := &City{
+						Min:   num,
+						Max:   num,
+						Avg:   float32(num),
+						Count: 1,
+					}
+
+					cities[cityName] = newCity
 				}
-				if city.Min > num {
-					newCity.Min = num
-				}
-
-				newCity.Avg = (city.Avg*float32(city.Count) + float32(num)) / (float32(city.Count) + 1)
-
-				newCity.Count += 1
-
-				cities[cityName] = newCity
-
-			} else {
-				newCity := &City{
-					Min:   num,
-					Max:   num,
-					Avg:   float32(num),
-					Count: 1,
-				}
-
-				cities[cityName] = newCity
 			}
 		}
-	}
-	output <- cities
+		outputStream <- cities
+	}()
+
+	return outputStream
 }
 
-func aggregate(aggregateChannels []chan map[string]*City) {
-	for i := 0; i < len(aggregateChannels); i++ {
-		close(aggregateChannels[i])
-	}
+func aggregate(aggregateChannels []<-chan map[string]*City) {
 
 	cities := make(map[string]City)
 
@@ -153,29 +157,27 @@ func main() {
 	}
 	defer file.Close()
 
-	CHUNK_SIZE := 16384
+	CHUNK_SIZE := 500000
 	WORKERS := 200
 	dataStream := producer(file, CHUNK_SIZE)
 
-	channels := make([]chan []byte, WORKERS)
-	aggregateChannels := make([]chan map[string]*City, WORKERS)
+	inputChannels := make([]chan []byte, WORKERS)
+	aggregateChannels := make([]<-chan map[string]*City, WORKERS)
 
 	var wg sync.WaitGroup
 	wg.Add(WORKERS)
 
 	for i := 0; i < WORKERS; i++ {
-		input := make(chan []byte)
-		output := make(chan map[string]*City, 1)
+		inputStream := make(chan []byte)
+		outputStream := consumer(inputStream, &wg)
 
-		go consumer(input, output, &wg)
-
-		channels[i] = input
-		aggregateChannels[i] = output
+		inputChannels[i] = inputStream
+		aggregateChannels[i] = outputStream
 	}
 
 	var index int
 	for batch := range dataStream {
-		channels[index] <- batch
+		inputChannels[index] <- batch
 
 		index++
 		if index >= WORKERS {
@@ -184,7 +186,7 @@ func main() {
 	}
 
 	for i := 0; i < WORKERS; i++ {
-		close(channels[i])
+		close(inputChannels[i])
 	}
 	wg.Wait()
 
