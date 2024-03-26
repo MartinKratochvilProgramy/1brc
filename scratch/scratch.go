@@ -62,7 +62,9 @@ func main() {
 	defer close(done)
 
 	intStream := generator(done, 1, 2, 3, 4)
-	pipeline := multiply(done, add(done, multiply(done, intStream, 2), 1), 2)
+	multiplyStream := multiply(done, intStream, 2)
+	addStream := add(done, multiplyStream, 1)
+	pipeline := multiply(done, addStream, 2)
 
 	for v := range pipeline {
 		fmt.Println(v)
